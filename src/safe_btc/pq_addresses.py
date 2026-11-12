@@ -1,13 +1,21 @@
 """
 bech32m encoding/decoding for quantum-resistant Bitcoin addresses.
 
-Address format: bc1z<version><data>
+Address format: bc1r<data>
+
+The HRP is "bc" (same as all native segwit addresses). The witness version
+byte 0x03 is encoded by bech32m as the character "r" (charset index 3), so
+quantum-resistant addresses start with "bc1r...".
 
 The data payload is a SHA-256 hash of the ML-DSA-65 public key (32 bytes).
 At spend time, the full public key (1952 bytes) is revealed in the witness
 and verified against this commitment.
 
-Uses the reference bech32 implementation (Pieter Wuille).
+Uses the reference bech32m implementation (Pieter Wuille, BIP-350).
+
+Note: Witness version 0x02 (bc1z...) is allocated to BIP-360 (P2MR).
+This format uses witness version 0x03 as discussed in the April 2026
+Delving Bitcoin thread on ML-DSA-65 address formats.
 """
 
 from __future__ import annotations
@@ -16,11 +24,13 @@ import hashlib
 
 import bech32
 
-# Human-readable part for quantum-resistant addresses
-HRP = "bc1z"
+# Human-readable part for quantum-resistant addresses.
+# The HRP is "bc"; version 0x03 encodes as "r" in bech32m, giving "bc1r...".
+HRP = "bc"
 
-# Witness version for post-quantum addresses
-WITNESS_VERSION_PQ = 0x02
+# Witness version for post-quantum addresses.
+# 0x02 is allocated to BIP-360 (P2MR). Using 0x03 per community discussion.
+WITNESS_VERSION_PQ = 0x03
 
 # Length of the SHA-256 hash commitment (32 bytes)
 COMMITMENT_LEN = 32
@@ -28,14 +38,14 @@ COMMITMENT_LEN = 32
 
 def encode_address(pubkey_hash: bytes, version: int = WITNESS_VERSION_PQ) -> str:
     """
-    Encode a quantum-resistant Bitcoin address.
+    Encode a quantum-resistant Bitcoin address using bech32m (BIP-350).
 
     Args:
         pubkey_hash: 32-byte SHA-256 hash of the ML-DSA-65 public key.
-        version: Witness version byte (default: 0x02 for post-quantum).
+        version: Witness version byte (default: 0x03 for post-quantum).
 
     Returns:
-        A bech32-encoded address string (e.g., bc1z1...).
+        A bech32m-encoded address string (e.g., bc1r1...).
 
     Raises:
         ValueError: If pubkey_hash is not 32 bytes.
@@ -54,7 +64,7 @@ def decode_address(address: str) -> tuple[int, bytes]:
     Decode a quantum-resistant Bitcoin address.
 
     Args:
-        address: A bech32-encoded address string.
+        address: A bech32m-encoded address string.
 
     Returns:
         A tuple of (version, pubkey_hash) where pubkey_hash is 32 bytes.
@@ -64,7 +74,7 @@ def decode_address(address: str) -> tuple[int, bytes]:
     """
     result = bech32.decode(HRP, address)
     if result == (None, None):
-        raise ValueError("Invalid bech32 address")
+        raise ValueError("Invalid bech32m address")
 
     version, data = result
     if version != WITNESS_VERSION_PQ:
@@ -106,7 +116,7 @@ def address_from_public_key(public_key: bytes, version: int = WITNESS_VERSION_PQ
         version: Witness version byte.
 
     Returns:
-        A bech32-encoded address string.
+        A bech32m-encoded address string.
     """
     pubkey_hash = compute_pubkey_hash(public_key)
     return encode_address(pubkey_hash, version)

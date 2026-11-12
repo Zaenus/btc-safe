@@ -1,7 +1,7 @@
 # Migration Guide: Legacy to Quantum-Resistant Addresses
 
 This guide explains how to migrate Bitcoin funds from legacy (ECDSA/Schnorr)
-addresses to quantum-resistant `bc1z` addresses using ML-DSA-65.
+addresses to quantum-resistant `bc1r` addresses using ML-DSA-65.
 
 ## Why Migrate
 
@@ -18,7 +18,7 @@ can derive the private key and spend the funds.
 | Reused P2PKH/P2WPKH | Yes (after first spend) | HIGH |
 | Unspent P2PKH/P2WPKH | No | LOW (until spent) |
 | Taproot (key path) | Yes (if key path spent) | MEDIUM |
-| `bc1z` (PQ) | No (hash only) | NONE |
+| `bc1r` (PQ) | No (hash only) | NONE |
 
 ## Migration Steps
 
@@ -31,7 +31,7 @@ safe-btc generate-key --output my-pq-key.json
 This creates:
 - `public_key`: Hex-encoded ML-DSA-65 public key (1952 bytes)
 - `secret_key`: Hex-encoded ML-DSA-65 secret key (4032 bytes) — **keep secret!**
-- `address`: Your new `bc1z` quantum-resistant address
+- `address`: Your new `bc1r` quantum-resistant address
 
 ### 2. Create a Migration Plan
 
@@ -50,7 +50,7 @@ safe-btc migrate --wallet my-wallet.txt --output migration-plan.json
 ### 3. Move Funds
 
 For each legacy address, create a transaction sending funds to the corresponding
-`bc1z` address. Sign with your legacy keys and broadcast to the network.
+`bc1r` address. Sign with your legacy keys and broadcast to the network.
 
 **Important:** Once you spend from a legacy address, its public key is revealed
 on-chain. Move funds to PQ addresses before a CRQC exists.
@@ -80,13 +80,13 @@ PQ transactions are significantly larger than legacy transactions:
 |-----------------|------------------|
 | Legacy P2PKH | ~250 vbytes |
 | P2WPKH (SegWit) | ~140 vbytes |
-| PQ `bc1z` | ~3,500+ vbytes |
+| PQ `bc1r` | ~3,500+ vbytes |
 
 Expect higher fees for PQ transactions until signature aggregation
 (SNARK-wrapped signatures) is implemented.
 
 ## Disclaimer
 
-This is pre-consensus reference software. The `bc1z` address format is
+This is pre-consensus reference software. The `bc1r` address format is
 not yet recognized by Bitcoin nodes or wallets. Use only for testing and
 development until a BIP is proposed and activated.

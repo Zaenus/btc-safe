@@ -4,8 +4,8 @@ Example: Generate a quantum-resistant Bitcoin address.
 
 This script demonstrates:
 1. Generating an ML-DSA-65 key pair
-2. Deriving a bc1z address from the public key
-3. Signing and verifying a message
+2. Deriving a bc1r address from the public key (bech32m, witness v3)
+3. Signing and verifying a message (BIP-143 sighash)
 """
 
 from safe_btc import (
@@ -25,10 +25,10 @@ def main():
     print(f"Public key size:  {len(keypair.public_key)} bytes")
     print(f"Secret key size:  {len(keypair.secret_key)} bytes")
 
-    # 2. Derive a bc1z quantum-resistant address
+    # 2. Derive a bc1r quantum-resistant address
     address = address_from_public_key(keypair.public_key)
     print(f"\nQuantum-resistant address: {address}")
-    print(f"Valid bc1z address: {is_valid_address(address)}")
+    print(f"Valid bc1r address: {is_valid_address(address)}")
 
     # 3. Sign a message (e.g., a transaction hash)
     message = b"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
@@ -43,7 +43,7 @@ def main():
     valid_tampered = keypair.verify(b"tampered", signature)
     print(f"Tampered signature valid: {valid_tampered}")
 
-    print("\nDone! Your bc1z address is ready for post-quantum Bitcoin.")
+    print("\nDone! Your bc1r address is ready for post-quantum Bitcoin.")
 
 
 if __name__ == "__main__":

@@ -100,7 +100,7 @@ class TestPQAddresses:
         pk, _ = MLDSA65.keypair()
         addr = address_from_public_key(pk)
         assert is_valid_address(addr) is True
-        assert is_valid_address("bc1z00000000000000000000000000000000000000000") is False
+        assert is_valid_address("bc1r00000000000000000000000000000000000000000") is False
         assert is_valid_address("not an address") is False
         assert is_valid_address("bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3d4") is False  # SegWit, not PQ
 
@@ -138,7 +138,7 @@ class TestKeys:
     def test_key_to_address(self):
         pk, _ = MLDSA65.keypair()
         addr = key_to_address(pk)
-        assert addr.startswith("bc1z")
+        assert addr.startswith("bc1r")
 
     def test_verify_pubkey_match(self):
         pk, _ = MLDSA65.keypair()

@@ -56,7 +56,7 @@ class TestElectrumWallet:
                 keypair, label="my PQ address", derivation_path="m/84'/0'/0'/0/0"
             )
 
-            assert info.address.startswith("bc1z")
+            assert info.address.startswith("bc1r")
             assert info.label == "my PQ address"
             assert info.derivation_path == "m/84'/0'/0'/0/0"
 

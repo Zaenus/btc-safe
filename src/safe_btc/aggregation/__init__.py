@@ -2,19 +2,22 @@
 Signature aggregation for post-quantum Bitcoin addresses.
 
 ML-DSA-65 signatures are ~3,309 bytes each, making individual PQ transactions
-prohibitively expensive. This module provides SNARK-wrapped signature
-aggregation: multiple ML-DSA signatures are compressed into a single
+prohibitively expensive at scale. This module provides a prototype SNARK-wrapped
+signature aggregation: multiple ML-DSA signatures are compressed into a single
 zero-knowledge proof that can be verified on-chain.
 
-This is a prototype implementation. Production use requires a compiled
-SNARK circuit (e.g., using Circom, Noir, or SP1) and a trusted setup.
+WARNING: The SNARK implementation in this module is a MOCK (deterministic hash
+construction), not a real zk-SNARK circuit. Compression numbers (e.g., ~192-byte
+proofs) are illustrative only. Production use requires a compiled SNARK circuit
+(e.g., using Circom, Noir, or SP1) with a trusted setup and a formal security
+audit. Do not use the mock proofs for any on-chain value.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 from ..pq_signatures import MLDSA65, KeyPair
@@ -87,7 +90,12 @@ class AggregatedSignature:
 
 class MockSNARK:
     """
-    A mock SNARK implementation for prototype demonstration.
+    A mock SNARK implementation for prototype demonstration ONLY.
+
+    This is NOT a real zk-SNARK. It is a deterministic hash-based construction
+    used to demonstrate the aggregation interface and compression ratios.
+    The proofs it produces have no cryptographic soundness and must not be
+    used on-chain.
 
     In production, this would be replaced with a real zk-SNARK (e.g., Groth16,
     PLONK, or SP1 STARK) with a compiled circuit for ML-DSA-65 verification.
