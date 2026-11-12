@@ -25,6 +25,12 @@ classifiers = [
 ]
 dependencies = [
     "pqcrypto>=1.0.0",
+    "bech32>=1.2.0",
+]
+
+[project.optional-dependencies]
+rpc = [
+    "requests>=2.31.0",
 ]
 
 [project.scripts]
