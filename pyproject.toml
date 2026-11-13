@@ -4,15 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "safe-btc"
-version = "0.1.0"
-description = "Quantum-resistant address formats and tools for Bitcoin"
+version = "0.2.0"
+description = "Post-quantum (witness v3, ML-DSA-65) research tooling for Bitcoin"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"
 authors = [{name = "Zaenus", email = "zaenus@users.noreply.github.com"}]
 keywords = ["bitcoin", "quantum", "post-quantum", "ml-dsa", "cryptography"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 2 - Pre-Alpha",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
@@ -20,21 +20,33 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Security :: Cryptography",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
-    "pqcrypto>=1.0.0",
-    "bech32>=1.2.0",
+    # ML-DSA (FIPS 204) via OpenSSL, including seeded key generation
+    "cryptography>=50.0",
+    # BIP-39 mnemonics (recoverable keys)
+    "mnemonic>=0.21",
 ]
 
 [project.optional-dependencies]
 rpc = [
     "requests>=2.31.0",
 ]
+dev = [
+    "pytest>=8.0",
+    # Independent pure-Python ML-DSA used to cross-check OpenSSL in tests
+    # and to produce deterministic signatures for the BIP test vectors.
+    "dilithium-py==1.5.1",
+]
 
 [project.scripts]
 safe-btc = "safe_btc.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

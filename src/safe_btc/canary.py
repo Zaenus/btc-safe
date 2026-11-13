@@ -1,25 +1,42 @@
 """
 Quantum canary monitor.
 
-Watches a known address with an exposed public key on the Bitcoin blockchain.
-If the canary address ever spends funds, it's evidence that a cryptographically
-relevant quantum computer (CRQC) exists and can derive private keys from
-exposed public keys.
+A useful canary must be an output that *nobody* can spend without breaking
+secp256k1's discrete-log problem. The default canary is a Taproot output whose
+output key is the BIP-341 "nothing up my sleeve" point
 
-This provides an early-warning signal for the network to activate
-post-quantum migration protocols.
+    H = lift_x(SHA256(uncompressed G))
+      = 50929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0
+
+No one knows H's private key, and no script path exists (that would require
+finding an internal key and tweak hashing to H). Any spend from it is therefore
+strong evidence that someone can compute discrete logs, i.e. a CRQC (or a
+classical break of secp256k1).
+
+The previous default, 1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa (the genesis address),
+was a poor canary: the genesis coinbase can never be spent, and anything else
+sent there could be spent by whoever holds the key without proving anything.
+
+A canary only works if coins sit at it. Anyone can fund it (a public bounty).
 """
 
 from __future__ import annotations
 
 import json
 import time
+import urllib.request
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable
 
-# Default canary address: Satoshi-era P2PK address with exposed public key
-# 1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa (Bitcoin genesis block reward)
-DEFAULT_CANARY_ADDRESS = "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"
+from . import segwit_addr
+
+NUMS_H = bytes.fromhex("50929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0")
+NUMS_CANARY_ADDRESSES = {
+    "mainnet": segwit_addr.encode("bc", 1, NUMS_H),
+    "testnet": segwit_addr.encode("tb", 1, NUMS_H),
+}
+DEFAULT_CANARY_ADDRESS = NUMS_CANARY_ADDRESSES["mainnet"]
+DEFAULT_ESPLORA_URL = "https://mempool.space/api"
 
 
 @dataclass
@@ -44,66 +61,109 @@ class CanaryAlert:
         }
 
 
+def _alert(address: str, txid: str | None, height: int | None, block_hash: str | None) -> CanaryAlert:
+    where = f"at block {height}" if height is not None else "in the mempool"
+    return CanaryAlert(
+        address=address,
+        block_height=height,
+        block_hash=block_hash,
+        timestamp=time.time(),
+        transaction_id=txid,
+        message=(
+            f"QUANTUM ALERT: canary {address} was spent {where} (tx {txid}). "
+            "Its key has no known owner, so this indicates secp256k1 discrete logs "
+            "can be computed."
+        ),
+    )
+
+
 @dataclass
 class CanaryMonitor:
-    """Monitors canary addresses for quantum attack evidence."""
+    """Monitors a canary address for evidence of a broken secp256k1."""
 
     address: str = DEFAULT_CANARY_ADDRESS
-    checked_blocks: list[int] = field(default_factory=list)
     last_block_height: int | None = None
     alerts: list[CanaryAlert] = field(default_factory=list)
     triggered: bool = False
 
-    def check_spent(self, current_block_height: int, transactions: list[dict[str, Any]]) -> list[CanaryAlert]:
+    def _record(self, alert: CanaryAlert) -> CanaryAlert | None:
+        if any(a.transaction_id == alert.transaction_id for a in self.alerts):
+            return None
+        self.alerts.append(alert)
+        self.triggered = True
+        return alert
+
+    def check_spent(
+        self, current_block_height: int | None, transactions: list[dict[str, Any]]
+    ) -> list[CanaryAlert]:
         """
-        Check if the canary address has spent funds in new transactions.
+        Check already-fetched transactions (e.g. from your own node).
 
-        Args:
-            current_block_height: The latest block height to check up to.
-            transactions: List of transactions from new blocks, each with
-                'txid', 'block_height', 'block_hash', 'inputs' (list of
-                addresses spent), and 'outputs'.
-
-        Returns:
-            A list of new CanaryAlert instances.
+        Each transaction is a dict with 'txid', 'block_height', 'block_hash'
+        and 'inputs' (the list of addresses its inputs spend from).
         """
-        new_alerts: list[CanaryAlert] = []
-
+        new = []
         for tx in transactions:
-            inputs = tx.get("inputs", [])
-            if self.address in inputs:
-                alert = CanaryAlert(
-                    address=self.address,
-                    block_height=tx.get("block_height"),
-                    block_hash=tx.get("block_hash"),
-                    timestamp=time.time(),
-                    transaction_id=tx.get("txid"),
-                    message=(
-                        f"QUANTUM ALERT: Canary address {self.address} spent funds "
-                        f"at block {tx.get('block_height')}. This suggests a "
-                        f"cryptographically relevant quantum computer exists."
-                    ),
-                )
-                new_alerts.append(alert)
-                self.alerts.append(alert)
-                self.triggered = True
-
+            if self.address in tx.get("inputs", []):
+                a = self._record(_alert(self.address, tx.get("txid"), tx.get("block_height"), tx.get("block_hash")))
+                if a:
+                    new.append(a)
         if current_block_height is not None:
             self.last_block_height = current_block_height
-            self.checked_blocks.append(current_block_height)
+        return new
 
-        return new_alerts
+    def poll_esplora(
+        self,
+        base_url: str = DEFAULT_ESPLORA_URL,
+        fetch_json: Callable[[str], Any] | None = None,
+    ) -> list[CanaryAlert]:
+        """
+        Poll an Esplora-compatible API (mempool.space, blockstream.info, or your
+        own instance) for spends from the canary, including unconfirmed ones.
+
+        Note: querying a third-party server tells it which address you watch.
+        """
+        fetch = fetch_json or _http_get_json
+        base = base_url.rstrip("/")
+        new: list[CanaryAlert] = []
+        # The summary counts are complete; the tx list below is paginated.
+        stats = fetch(f"{base}/address/{self.address}")
+        spent = sum(
+            (stats.get(k) or {}).get("spent_txo_count", 0) for k in ("chain_stats", "mempool_stats")
+        )
+        try:
+            self.last_block_height = int(fetch(f"{base}/blocks/tip/height"))
+        except (ValueError, TypeError):
+            pass
+        if spent == 0:
+            return new
+        txs = fetch(f"{base}/address/{self.address}/txs")
+        for tx in txs:
+            spends = any(
+                (vin.get("prevout") or {}).get("scriptpubkey_address") == self.address
+                for vin in tx.get("vin", [])
+            )
+            if spends:
+                status = tx.get("status", {})
+                a = self._record(
+                    _alert(self.address, tx.get("txid"), status.get("block_height"), status.get("block_hash"))
+                )
+                if a:
+                    new.append(a)
+        if not self.alerts:
+            # Spent per the summary, but the spend was not on the first page.
+            a = self._record(_alert(self.address, None, None, None))
+            if a:
+                new.append(a)
+        return new
 
     def is_triggered(self) -> bool:
-        """Return True if the canary has ever been triggered."""
         return self.triggered
 
     def save_state(self, path: str) -> None:
-        """Save monitor state to a JSON file."""
         state = {
             "address": self.address,
             "last_block_height": self.last_block_height,
-            "checked_blocks": self.checked_blocks,
             "triggered": self.triggered,
             "alerts": [a.to_dict() for a in self.alerts],
         }
@@ -112,13 +172,11 @@ class CanaryMonitor:
 
     @classmethod
     def load_state(cls, path: str) -> "CanaryMonitor":
-        """Load monitor state from a JSON file."""
-        with open(path, "r") as f:
+        with open(path) as f:
             state = json.load(f)
         monitor = cls(
             address=state.get("address", DEFAULT_CANARY_ADDRESS),
             last_block_height=state.get("last_block_height"),
-            checked_blocks=state.get("checked_blocks", []),
             triggered=state.get("triggered", False),
         )
         for a in state.get("alerts", []):
@@ -133,6 +191,16 @@ class CanaryMonitor:
                 )
             )
         return monitor
+
+
+def _http_get_json(url: str) -> Any:
+    req = urllib.request.Request(url, headers={"User-Agent": "safe-btc-canary"})
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        body = resp.read().decode()
+    try:
+        return json.loads(body)
+    except json.JSONDecodeError:
+        return body.strip()
 
 
 def create_canary_monitor(address: str = DEFAULT_CANARY_ADDRESS) -> CanaryMonitor:

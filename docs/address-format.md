@@ -1,70 +1,70 @@
-# Quantum-Resistant Address Format Specification
+# Witness v3 Address Format (`bc1r`)
 
-This document specifies the `bc1z` address format for quantum-resistant
-Bitcoin addresses using ML-DSA-65 (FIPS 204) post-quantum signatures.
+This is a short summary for implementers. The normative text is the BIP draft,
+[`bip/0001-pq-address-format.md`](bip/0001-pq-address-format.md), and the test
+vectors are in [`bip/0001-test-vectors.json`](bip/0001-test-vectors.json).
 
 ## Overview
 
-The `bc1z` address format commits to a SHA-256 hash of an ML-DSA-65
-public key. The full public key is revealed at spend time (in the witness)
-and verified against this commitment before signature verification.
+A witness v3 output commits to an ML-DSA-65 (FIPS 204) public key. Spending
+reveals the key and an ML-DSA-65 signature.
 
-This follows the same pattern as P2WPKH (SegWit v0), where the address
-contains a hash of the public key and the full public key is provided
-in the witness at spend time.
-
-## Address Structure
-
-```
-bc1z<version><data><checksum>
-```
-
-| Component | Size | Description |
-|-----------|------|-------------|
-| HRP | 4 chars | `bc1z` (fixed) |
-| Separator | 1 char | `1` (bech32m standard) |
-| Version | 5 bits | Witness version `0x02` (post-quantum) |
-| Data | 32 bytes | SHA-256(public_key) commitment |
-| Checksum | 6 chars | Bech32m checksum |
+**The output remains quantum-resistant after the key and signatures are
+revealed.** This is the key difference from P2WPKH, which also hides a key
+behind a hash but is only safe while that key stays hidden. Here the hash keeps
+the output small (34 bytes instead of about 1,955); it is not what provides
+security. Reusing an address is therefore safe against a quantum attacker,
+although it still hurts privacy.
 
 ## Encoding
 
-1. Compute `commitment = SHA-256(ml_dsa_public_key)` (32 bytes)
-2. Construct data payload: `version_byte || commitment` (33 bytes total)
-3. Convert from 8-bit to 5-bit groups (bech32m conversion)
-4. Append 6-symbol bech32m checksum
-5. Encode using bech32m character set
-6. Prepend HRP `bc1z`
+```
+key_blob     = 0x01 || ml_dsa_65_public_key          (1 + 1,952 bytes)
+commitment   = TaggedHash("PQKeyCommit", key_blob)  (32 bytes, BIP-340 tagged hash)
+scriptPubKey = 0x53 0x20 <commitment>                (OP_3 OP_PUSHBYTES_32)
+address      = bech32m(hrp, witness_version = 3, program = commitment)
+```
 
-## Spend-time Validation
+| Part | Value |
+|---|---|
+| HRP | `bc` (mainnet), `tb` (testnet, signet), `bcrt` (regtest) |
+| Separator | `1` |
+| Witness version | 3, a single 5-bit symbol written as `r` |
+| Program | 32-byte commitment (52 five-bit symbols) |
+| Checksum | 6 symbols, **bech32m** (BIP-350), as required for versions 1-16 |
 
-When spending from a `bc1z` address:
+Mainnet addresses are 62 characters and start with `bc1r`. Note that the
+witness version is a separate symbol, not a byte prepended to the program.
 
-1. The witness contains: `ml_dsa_public_key (1952 bytes) || ml_dsa_signature (3309 bytes)`
-2. Hash the provided public key: `SHA-256(pubkey)`
-3. Verify the hash matches the address commitment
-4. Verify the ML-DSA-65 signature against the public key and message
+Version 0.1 of safe-btc produced witness v3 addresses with the older bech32
+(BIP-173) checksum. Those strings are invalid; any BIP-350 decoder rejects them.
 
-## Parameter Sizes (ML-DSA-65)
+## Witness at spend time
 
-| Parameter | Size |
-|-----------|------|
+```
+<signature>  <key_blob>  [<annex>]
+```
+
+* `signature`: 3,309 bytes (SIGHASH_DEFAULT) or 3,310 bytes (last byte is the
+  hash type)
+* `key_blob`: `0x01 || public_key` (1,953 bytes)
+* optional annex as in BIP-341 (non-standard)
+
+The signature covers `TaggedHash("PQSighash", 0x00 || SigMsg)`, with `SigMsg`
+exactly as in BIP-341, and uses the FIPS 204 context string `"bitcoin:pq:tx"`.
+
+## Sizes (ML-DSA-65)
+
+| Item | Size |
+|---|---|
 | Public key | 1,952 bytes |
-| Secret key | 4,032 bytes |
+| Private key (seed) | 32 bytes (expanded form: 4,032 bytes, never stored) |
 | Signature | 3,309 bytes |
-| Commitment hash | 32 bytes |
+| Output | 43 bytes |
+| Input | 5,433 WU, about 1,358 vB |
 
-## Security Considerations
+## Safety
 
-- The commitment hash provides 128-bit collision resistance (birthday bound on SHA-256)
-- ML-DSA-65 provides approximately 192-bit security against quantum attacks
-- The full public key is 1,952 bytes — significantly larger than ECDSA's ~33 bytes
-  This increases transaction size and fee costs for PQ transactions
-- Addresses are ~54 characters long, comparable to Taproot addresses
-
-## Future Work
-
-- Support for ML-DSA-44 (smaller keys/sigs, ~128-bit security)
-- Support for ML-DSA-87 (larger keys/sigs, ~256-bit security)
-- Support for FN-DSA (Falcon) for smaller signatures (~600-1300 bytes)
-- Signature aggregation via SNARKs to reduce on-chain data
+Witness v3 is **not active** on any network. Coins sent to a mainnet `bc1r`
+address today can be taken by anyone. safe-btc defaults to testnet and refuses
+to print mainnet addresses without `--allow-mainnet`.
