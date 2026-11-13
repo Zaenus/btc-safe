@@ -32,33 +32,41 @@ cd btc-safe
 python3 -m venv .venv
 source .venv/bin/activate
 
-# Install dependencies
-pip install -e .
-
-# Install dev dependencies
-pip install pytest
+# Install with dev dependencies (pytest, dilithium-py for cross-checks)
+pip install -e ".[dev]"
 
 # Run tests
 pytest
+
+# If you change the spec or consensus code, regenerate the BIP vectors
+# and commit the result (CI checks that they are reproducible)
+python tools/generate_bip_vectors.py
 ```
 
 ## Areas for Contribution
 
 ### High Priority
-- **ML-DSA signature integration**: Refine the PQ signature wrapper
-- **Address format**: Finalize the `bc1z` bech32m address specification
-- **Migration tools**: Build legacy → PQ address migration helpers
-- **Canary monitor**: Implement on-chain quantum threat detection
+- **Spec review**: read `docs/bip/0001-pq-address-format.md` and its open
+  questions (ML-DSA-44 vs -65, hybrid key type, witness discount)
+- **Bitcoin Core patch**: implement the spending rules on regtest and
+  benchmark ML-DSA-65 verification
+- **Test vectors**: independent implementations that check
+  `docs/bip/0001-test-vectors.json`
 
 ### Medium Priority
-- **Wallet integration**: Python library for managing PQ keys
-- **CLI improvements**: More commands, better output formatting
-- **Documentation**: Specs, guides, examples
+- **Wallet integration**: PSBT field assignment, hardware wallet signing
+- **Canary**: more data sources (Bitcoin Core RPC, Electrum servers)
+- **Documentation**: guides and examples
 
-### Future (Post-BIP)
-- **Consensus integration**: Soft-fork proposal (BIP) for new witness version
-- **Signature aggregation**: SNARK-wrapped PQ signatures to reduce block space
-- **Multi-sig**: PQ multisig address formats
+### Research
+- **Signature aggregation**: see `docs/research/signature-aggregation.md`
+  (must be post-quantum sound and need no trusted setup)
+- **Multisig**: P2MR leaves with post-quantum signature opcodes
+
+### Rules for changes
+- Never make mainnet witness v3 addresses the default.
+- Any change to consensus rules must update the BIP text, `consensus.py`
+  and the test vectors together.
 
 ## Security Policy
 

@@ -1,125 +1,141 @@
 # btc-safe
 
-Quantum-resistant address formats and tools for Bitcoin.
+Post-quantum output format, reference implementation and tooling for Bitcoin.
+The repository is `btc-safe`; the Python package and CLI are `safe-btc`.
 
-## Mission
+> **Research software.** The witness v3 output type proposed here is **not
+> active** on any Bitcoin network. Coins sent to a mainnet `bc1r` address today
+> can be taken by anyone. The tools default to testnet.
 
-Build practical tooling to prepare Bitcoin for the post-quantum era — starting
-with quantum-resistant address formats using ML-DSA (FIPS 204), signature
-aggregation to reduce on-chain size, wallet integration, and a consensus-layer
-BIP proposal.
+## The problem
 
-## The Problem
+Bitcoin's ECDSA and Schnorr signatures (secp256k1) can be broken by Shor's
+algorithm on a cryptographically relevant quantum computer (CRQC):
 
-Bitcoin's digital signatures (ECDSA/secp256k1 and Schnorr/secp256k1) are
-vulnerable to Shor's algorithm on a cryptographically relevant quantum
-computer (CRQC). Once a public key appears on-chain, a sufficiently powerful
-quantum computer can derive the private key and spend the funds.
+* **Long-exposure attacks** hit keys already on-chain: P2PK, Taproot (the output
+  key is in the scriptPubKey), and any address that has been spent from or
+  reused. BIP-361 cites more than 34% of all bitcoin as exposed this way.
+* **Short-exposure attacks** hit any secp256k1 spend while it waits in the
+  mempool, including never-reused P2WPKH.
 
-- **Exposed-key addresses** (P2PK, reused P2PKH/P2WPKH after spending, Taproot): directly vulnerable
-- **Hidden-key addresses** (unspent P2PKH/P2WPKH): safe until spent, but the public key is revealed at spend time
+Migration has to be done **before** a CRQC exists: soft forks take years to
+activate, and moving tens of millions of UTXOs takes months of block space.
 
-## The Approach
+## The proposal
 
-**Phase 1 — Off-chain reference implementation (complete):**
-- ML-DSA-65 (FIPS 204) post-quantum signatures
-- `bc1r` bech32m address format (BIP-350, witness version 0x03) committing to a SHA-256 hash of the ML-DSA public key
-- Key generation, signing, verification
-- Legacy → PQ migration helper
-- Quantum canary monitor (early warning of CRQC capability)
-- Test suite (43 tests, all passing)
+A new witness version 3 output spent with **ML-DSA-65** (FIPS 204):
 
-**Phase 2 — Consensus preparation (in progress):**
-- BIP draft for PQ witness version (`docs/bip/`)
-- Signature aggregation via SNARK-wrapped ML-DSA (compresses 3,309-byte sigs to ~192-byte proofs — **mock prototype only**)
-- Wallet integration (Electrum, Bitcoin Core RPC, hardware wallets, PSBT support)
+* Output: `OP_3 <TaggedHash("PQKeyCommit", key_type || pubkey)>`, encoded as a
+  **bech32m** address: `bc1r...` (mainnet), `tb1r...` (testnet/signet),
+  `bcrt1r...` (regtest).
+* Witness: `<signature[||hash_type]> <key_type || pubkey>`, with the signature
+  over a BIP-341-style sighash (tag `"PQSighash"`) and FIPS 204 context
+  `"bitcoin:pq:tx"`.
+* **Unlike P2WPKH, a `bc1r` output stays quantum-resistant after its public key
+  and signatures are revealed.** The hash commitment keeps outputs small; it is
+  not what provides security. Address reuse is safe against quantum attack
+  (though still bad for privacy).
+* A key type byte lets future soft forks add ML-DSA-44, SLH-DSA, FN-DSA or
+  hybrid keys without spending another witness version.
+
+Read the [BIP draft](docs/bip/0001-pq-address-format.md) and its
+[test vectors](docs/bip/0001-test-vectors.json). Discussion is on
+[Delving Bitcoin](https://delvingbitcoin.org/t/bip-draft-witness-version-3-ml-dsa-65-post-quantum-key-path-spending/2422).
 
 ## Installation
 
 ```bash
 git clone https://github.com/Zaenus/btc-safe.git
 cd btc-safe
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e .
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
+pytest
 ```
 
-## Quick Start
+Requires Python 3.10+ and `cryptography` 50 or newer (ML-DSA via OpenSSL).
+
+## Quick start
 
 ```bash
-# Generate a new ML-DSA-65 key pair and PQ address
-safe-btc generate-key --output my-key.json
-safe-btc address --from-key my-key.json
-# → bc1r1...
+safe-btc info                                   # parameters, sizes, status
 
-# Sign a transaction hash
-safe-btc sign --key my-key.json --tx-hash <hex>
+# New recoverable key (prints a 24-word recovery phrase once, on stderr)
+safe-btc generate-key -o my-key.json
+safe-btc address --from-key my-key.json          # tb1r...
 
-# Verify a signature (uses BIP-143 sighash)
-safe-btc verify --address bc1r... --signature <hex> --public-key <hex> --tx-hash <hex>
+# Restore / derive more addresses from the phrase
+safe-btc generate-key --restore --index 1 -o key-1.json
 
-# Aggregate multiple PQ signatures (mock SNARK prototype — not for on-chain use)
-python3 -c "
-from safe_btc.aggregation import aggregate_signatures
-agg = aggregate_signatures(pubkeys, messages, signatures)
-print(agg.compression_ratio())  # illustrative only
-"
+# Off-chain message signing (separate FIPS 204 context from transactions)
+safe-btc sign --key my-key.json --message "hello"
+safe-btc verify --address tb1r... --public-key <hex> --signature <hex> --message "hello"
 
-# Create a migration plan for legacy addresses
-safe-btc migrate --addresses 1Abc...,3Def... --output plan.json
+# Classify addresses by quantum exposure and plan recoverable destinations
+safe-btc migrate --addresses 1Abc...,bc1p... --mnemonic-file phrase.txt -o plan.json
 
-# Watch a quantum canary address
-safe-btc canary --watch-address 1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa
+# Watch the NUMS-key canary (any spend means secp256k1 is broken)
+safe-btc canary --poll
 ```
 
-## Project Structure
+Building and signing a spend (library):
+
+```python
+from safe_btc.keys import generate_key_from_mnemonic
+from safe_btc.pq_addresses import compute_commitment, script_pubkey
+from safe_btc.psbt import PQPsbt
+from safe_btc.transaction import OutPoint, Transaction, TxIn, TxOut
+
+key = generate_key_from_mnemonic(phrase)
+utxo = TxOut(100_000, script_pubkey(compute_commitment(key.public_key)))
+tx = Transaction(inputs=[TxIn(OutPoint.from_hex_txid(txid, 0))],
+                 outputs=[TxOut(98_000, destination_script)])
+psbt = PQPsbt.create(tx, [utxo])
+psbt.sign_input(0, key)          # computes the sighash itself
+psbt.finalize()
+signed = psbt.extract()          # checked against the consensus rules
+```
+
+## Project structure
 
 ```
-safe-btc/
-├── src/safe_btc/          # Core library
-│   ├── __init__.py
-│   ├── pq_addresses.py    # bc1r bech32m address encoding (witness v3)
-│   ├── pq_signatures.py   # ML-DSA sign/verify wrapper
-│   ├── keys.py            # Key generation and management
-│   ├── wallet.py          # Legacy → PQ migration helper
-│   ├── canary.py          # Quantum canary monitor
-│   ├── cli.py             # Command-line interface
-│   ├── aggregation/       # Signature aggregation (mock SNARK prototype)
-│   └── wallet_integration/# Wallet adapters (Electrum, Bitcoin Core, PSBT)
-├── tests/                 # Test suite (43 tests)
-├── docs/                  # Specifications and guides
-│   ├── address-format.md  # bc1r spec
-│   ├── migration-guide.md # Legacy → PQ migration
-│   └── bip/               # BIP draft
-├── examples/              # Example scripts
-├── pyproject.toml         # Project configuration
-└── LICENSE                # MIT License
+src/safe_btc/
+  pq_signatures.py     ML-DSA-65 (seeded keygen, FIPS 204 contexts)
+  pq_addresses.py      commitment, scriptPubKey, bech32m addresses, networks
+  segwit_addr.py       BIP-173/350 reference code (vendored)
+  transaction.py       tx serialization, BIP-341-style signature message
+  consensus.py         reference spending rules and relay policy
+  psbt.py              BIP-174 PSBTs with proprietary PQ fields
+  keys.py              BIP-39 + hardened derivation, key files (0600)
+  wallet.py            exposure classifier, recoverable migration plans
+  canary.py            NUMS-key canary with Esplora polling
+  wallet_integration/  Electrum file helper, Core RPC, size/fee estimates
+  cli.py               command-line interface
+docs/
+  bip/                 BIP draft + test vectors
+  address-format.md    implementer summary
+  migration-guide.md   user guide
+  research/            signature aggregation notes
+tools/generate_bip_vectors.py
+tests/                 includes official BIP-341 and BIP-350 vectors
 ```
 
 ## Roadmap
 
-| Phase | Milestone | Status |
-|-------|-----------|--------|
-| 1 | ML-DSA-65 reference implementation | Complete |
-| 1 | `bc1r` address format (bech32m, witness v3) | Complete |
-| 1 | Migration helper + canary monitor | Complete |
-| 1 | Test suite (43 tests) | Complete |
-| 2 | BIP draft for PQ witness version | Complete (draft) |
-| 2 | Signature aggregation (mock SNARK) | Complete (prototype, not for production) |
-| 2 | Wallet integration (Electrum, Core RPC, PSBT) | Complete (prototype) |
-| 3 | BIP submission and community review | Planned |
-| 3 | Real SNARK circuit (Circom/Noir/SP1) | Future |
+| Milestone | Status |
+|---|---|
+| ML-DSA-65 keys, seeded and recoverable from BIP-39 | Done |
+| bech32m witness v3 addresses (BIP-350 vectors pass) | Done |
+| BIP-341-style sighash (checked against BIP-341 vectors) | Done |
+| Reference spending rules, relay policy, test vectors | Done (draft) |
+| PSBT support (proprietary fields) | Done (prototype) |
+| Migration planner, NUMS canary | Done |
+| Community review on Delving Bitcoin / bitcoin-dev | In progress |
+| Decide ML-DSA-44 vs -65, hybrid key type | Open |
+| Bitcoin Core patch (regtest) and validation benchmarks | Planned |
+| Signature aggregation | Research only ([notes](docs/research/signature-aggregation.md)) |
 
-## Address Format Notes
-
-- **HRP:** `bc` (same as all native segwit addresses)
-- **Witness version:** `0x03` (encodes as `r` in bech32m → addresses start with `bc1r`)
-- **Encoding:** bech32m (BIP-350)
-- **Commitment:** SHA-256 hash of ML-DSA-65 public key (32 bytes)
-- **Witness at spend:** `<ML-DSA signature> <ML-DSA public key>`
-- **Sighash:** BIP-143
-- **Note:** Witness version 0x02 (`bc1z`) is allocated to BIP-360 (P2MR). This format uses 0x03.
+See [CHANGELOG.md](CHANGELOG.md) for what changed in 0.2.
 
 ## License
 
-MIT License. See [LICENSE](LICENSE) for details.
+MIT. `src/safe_btc/segwit_addr.py` is MIT-licensed code by Pieter Wuille.
