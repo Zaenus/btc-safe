@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Documentation
+- The BIP draft and README now credit echelonresearch's April 2026 witness v3
+  draft on Delving Bitcoin as prior work and list how this draft differs. The
+  BIP no longer names that thread as its own discussion venue.
+- The P2MR alternative is reassessed: the size difference is under 10 WU per
+  input; the real trade-offs are Tapscript's 520-byte element limit versus
+  witness v3's lack of a fallback leaf.
+- Exposure figure updated to 7,159,718 BTC (35.6%) at block 975,029
+  (ChainQuery weekly UTXO-set walk), alongside BIP-361's March estimate.
+
 ## 0.2.0 (2026-11-13)
 
 This release fixes bugs that could lose funds, and revises the BIP draft after

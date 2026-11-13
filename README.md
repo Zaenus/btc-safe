@@ -14,7 +14,10 @@ algorithm on a cryptographically relevant quantum computer (CRQC):
 
 * **Long-exposure attacks** hit keys already on-chain: P2PK, Taproot (the output
   key is in the scriptPubKey), and any address that has been spent from or
-  reused. BIP-361 cites more than 34% of all bitcoin as exposed this way.
+  reused, plus bare multisig. That was 7,159,718 BTC (35.6% of supply) at
+  block 975,029 on 2026-11-08, per ChainQuery's weekly
+  [UTXO-set walk](https://chainquery.com/reports/quantum-exposure); BIP-361
+  cited more than 34% in March 2026.
 * **Short-exposure attacks** hit any secp256k1 spend while it waits in the
   mempool, including never-reused P2WPKH.
 
@@ -39,8 +42,10 @@ A new witness version 3 output spent with **ML-DSA-65** (FIPS 204):
   hybrid keys without spending another witness version.
 
 Read the [BIP draft](docs/bip/0001-pq-address-format.md) and its
-[test vectors](docs/bip/0001-test-vectors.json). Discussion is on
-[Delving Bitcoin](https://delvingbitcoin.org/t/bip-draft-witness-version-3-ml-dsa-65-post-quantum-key-path-spending/2422).
+[test vectors](docs/bip/0001-test-vectors.json). It builds on echelonresearch's
+earlier [witness v3 draft](https://delvingbitcoin.org/t/bip-draft-witness-version-3-ml-dsa-65-post-quantum-key-path-spending/2422)
+(Delving Bitcoin, April 2026), which introduced the `bc1r` ML-DSA-65 output and
+the `"PQSighash"` tag; the BIP lists what differs.
 
 ## Installation
 

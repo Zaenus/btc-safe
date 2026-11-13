@@ -7,7 +7,6 @@
   Type: Specification
   Created: 2026-11-12
   License: MIT
-  Discussion: https://delvingbitcoin.org/t/bip-draft-witness-version-3-ml-dsa-65-post-quantum-key-path-spending/2422
   Requires: 141, 173, 341, 350
 ```
 
@@ -31,8 +30,12 @@ attack matter:
 
 * **Long-exposure attacks** target public keys that are already on-chain: P2PK
   outputs, Taproot outputs (whose output key is in the scriptPubKey), and any
-  address that has been spent from or reused. BIP-361 cites an estimate that
-  more than 34% of all bitcoin had an exposed public key as of March 2026.
+  address that has been spent from or reused, plus bare multisig. BIP-361
+  cites an estimate of more than 34% of all bitcoin as of March 2026. A weekly
+  walk of the UTXO set by ChainQuery counted 7,159,718 BTC (35.6% of supply)
+  at block 975,029 (2026-11-08), using the same rule: P2PK, bare multisig and
+  Taproot outputs are always exposed, and hash-based outputs are exposed once
+  spent from [^exposure].
 * **Short-exposure attacks** target a key revealed by a spend that is still in
   the mempool. A fast enough CRQC could derive the private key and replace the
   transaction before it confirms. This affects *every* output type spent with
@@ -236,8 +239,9 @@ makes it impossible to replay a signature produced by other software using the
 same key. The message is already a 32-byte hash, so HashML-DSA (pre-hash) adds
 nothing.
 
-**Why ML-DSA-65 and not ML-DSA-44?** This is an open question raised on Delving
-Bitcoin. ML-DSA-44 (NIST category 2) inputs weigh about 3,904 WU instead of
+**Why ML-DSA-65 and not ML-DSA-44?** This is an open question, raised by
+conduition on Delving Bitcoin about the earlier witness v3 draft (see
+[Relationship to other proposals](#relationship-to-other-proposals)). ML-DSA-44 (NIST category 2) inputs weigh about 3,904 WU instead of
 5,433 (28% smaller, about 1,024 inputs per block instead of 736). ML-DSA-65
 (category 3) gives more margin against future cryptanalysis of lattices, which
 are newer than the assumptions Bitcoin relies on today. The key type registry
@@ -247,11 +251,17 @@ makes adding ML-DSA-44 a one-line change; feedback is requested.
 
 * **P2MR (BIP-360) plus a post-quantum signature opcode in a script leaf.** This
   gives full Script flexibility (multisig, timelocks, backup leaves) and can
-  hide unused alternatives. For the common single-key case it costs more
-  (control block plus a script containing the key) and requires changes to the
-  Script interpreter. The two are complementary: P2MR for scripts, witness v3
-  for single-key spends. The `key_blob` encoding defined here could be reused by
-  such an opcode.
+  hide unused alternatives, including a hash-based backup leaf that keeps coins
+  spendable if ML-DSA is broken. A witness v3 output is bound to a single key
+  type and has no such fallback; that is the main cost of this design. Size is
+  *not* a real difference: a single-leaf P2MR spend adds only a one-byte
+  control block and a few bytes of script framing, under 10 WU per input. The
+  differences are in consensus code: a 1,952-byte key push exceeds Tapscript's
+  520-byte stack element limit, so an opcode needs that limit (or the
+  interpreter) changed, while witness v3 validation is a fixed-shape check
+  outside Script. The two are complementary: P2MR for scripts and hedged
+  outputs, witness v3 for plain single-key spends. The `key_blob` encoding
+  defined here could be reused by such an opcode.
 * **Hybrid secp256k1 + ML-DSA.** Hedges against a classical break of lattice
   cryptography for about 100 extra bytes per input (Schnorr key and signature). It can be added later as its
   own key type.
@@ -268,6 +278,18 @@ makes adding ML-DSA-44 a one-line change; feedback is requested.
 
 ## Relationship to other proposals
 
+* **Prior work: "[BIP Draft] Witness Version 3: ML-DSA-65 Post-Quantum
+  Key-Path Spending"** by echelonresearch (Delving Bitcoin, April 2026,
+  https://delvingbitcoin.org/t/bip-draft-witness-version-3-ml-dsa-65-post-quantum-key-path-spending/2422,
+  reference code at https://github.com/echelonlabsresearch/bip-pq-witness-v3). That
+  draft first proposed a witness v3, `bc1r`, ML-DSA-65 key-path output with a
+  BIP-341-style signature message under the tag `"PQSighash"`. This document
+  shares those choices. It differs in committing to
+  `TaggedHash("PQKeyCommit", key_type || pubkey)` instead of a plain SHA-256 of
+  the public key, in the key type byte and upgrade hook for future schemes, in
+  FIPS 204 context strings, and in separating its signature message from
+  Taproot's by the tag alone (the earlier draft also uses distinct epoch and
+  spend-type bytes).
 * **BIP-360 (P2MR, witness v2)** removes Taproot's quantum-vulnerable key path.
   This BIP adds a post-quantum key spend; they can be deployed independently.
 * **BIP-361 (Post Quantum Migration and Legacy Signature Sunset)** describes how
@@ -326,8 +348,16 @@ addresses) and `psbt.py`.
 
 ## Acknowledgments
 
-Thanks to the reviewers on Delving Bitcoin and the bitcoin-dev mailing list
-whose feedback shaped this revision.
+Thanks to echelonresearch, whose earlier witness v3 draft this document builds
+on; to conduition, whose questions on that draft are addressed in the
+Rationale; and to the reviewers who sent feedback by email and on the
+bitcoin-dev mailing list.
+
+[^exposure]: ChainQuery, "Quantum exposure" weekly report,
+    https://chainquery.com/reports/quantum-exposure (snapshot 2026-11-08,
+    block 975,029, methodology v1.2). Its figure was revised upward twice in
+    June 2026 (nested SegWit reuse, P2PK); it agrees with BIP-361's March 2026
+    estimate.
 
 ## Copyright
 
