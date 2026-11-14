@@ -3,6 +3,9 @@
 ## Unreleased
 
 ### Documentation
+- The BIP draft and README are marked as a personal research draft, not
+  submitted and on hold, with pointers to the PQC output type discussion on
+  Delving Bitcoin, BIP-360 and SHRINCS.
 - The BIP draft and README now credit echelonresearch's April 2026 witness v3
   draft on Delving Bitcoin as prior work and list how this draft differs. The
   BIP no longer names that thread as its own discussion venue.

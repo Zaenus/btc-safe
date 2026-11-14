@@ -10,6 +10,17 @@
   Requires: 141, 173, 341, 350
 ```
 
+> **Personal research draft, not submitted.** This document has not been
+> proposed to the BIPs repository or the bitcoin-dev mailing list, and is not
+> seeking adoption. Current design discussion of post-quantum output types is
+> in the Delving Bitcoin thread
+> [PQC output type discussion](https://delvingbitcoin.org/t/pqc-output-type-discussion/2749),
+> where the direction is post-quantum signatures as opcodes or leaf versions
+> under P2MR (BIP-360) or a Taproot successor, not a dedicated key-path output
+> type like this one. Witness version 3 is also claimed by other drafts. The
+> draft is kept as a record of the design and as the spec for this
+> repository's reference code and test vectors.
+
 ## Abstract
 
 This document proposes witness version 3 outputs that are spent with ML-DSA-65

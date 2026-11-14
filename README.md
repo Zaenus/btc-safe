@@ -3,9 +3,18 @@
 Post-quantum output format, reference implementation and tooling for Bitcoin.
 The repository is `btc-safe`; the Python package and CLI are `safe-btc`.
 
-> **Research software.** The witness v3 output type proposed here is **not
+> **Research software.** The witness v3 output type described here is **not
 > active** on any Bitcoin network. Coins sent to a mainnet `bc1r` address today
 > can be taken by anyone. The tools default to testnet.
+
+> **Status: on hold.** The BIP draft in this repository is a personal research
+> draft. It has not been submitted and is not seeking adoption. Bitcoin's
+> post-quantum design work is converging elsewhere: see the Delving Bitcoin
+> [PQC output type discussion](https://delvingbitcoin.org/t/pqc-output-type-discussion/2749),
+> [BIP-360 (P2MR)](https://github.com/bitcoin/bips/blob/master/bip-0360.mediawiki)
+> and [SHRINCS](https://github.com/SHRINCS/shrincs-bip/blob/main/SHRINCS.md).
+> The code is kept as a reference implementation, test-vector source and
+> exposure tool.
 
 ## The problem
 
@@ -41,7 +50,7 @@ A new witness version 3 output spent with **ML-DSA-65** (FIPS 204):
 * A key type byte lets future soft forks add ML-DSA-44, SLH-DSA, FN-DSA or
   hybrid keys without spending another witness version.
 
-Read the [BIP draft](docs/bip/0001-pq-address-format.md) and its
+Read the [BIP draft](docs/bip/0001-pq-address-format.md) (personal research draft, not submitted) and its
 [test vectors](docs/bip/0001-test-vectors.json). It builds on echelonresearch's
 earlier [witness v3 draft](https://delvingbitcoin.org/t/bip-draft-witness-version-3-ml-dsa-65-post-quantum-key-path-spending/2422)
 (Delving Bitcoin, April 2026), which introduced the `bc1r` ML-DSA-65 output and
@@ -134,7 +143,7 @@ tests/                 includes official BIP-341 and BIP-350 vectors
 | Reference spending rules, relay policy, test vectors | Done (draft) |
 | PSBT support (proprietary fields) | Done (prototype) |
 | Migration planner, NUMS canary | Done |
-| Community review on Delving Bitcoin / bitcoin-dev | In progress |
+| BIP submission / community review | On hold (see Status above) |
 | Decide ML-DSA-44 vs -65, hybrid key type | Open |
 | Bitcoin Core patch (regtest) and validation benchmarks | Planned |
 | Signature aggregation | Research only ([notes](docs/research/signature-aggregation.md)) |
